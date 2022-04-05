@@ -6,6 +6,7 @@ import com.opencsv.bean.ColumnPositionMappingStrategy;
 import com.opencsv.bean.CsvToBean;
 import com.opencsv.bean.CsvToBeanBuilder;
 import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.w3c.dom.*;
@@ -14,9 +15,7 @@ import org.xml.sax.SAXException;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,48 +24,26 @@ public class Main {
     public static void main(String[] args) throws IOException, ParserConfigurationException, SAXException {
         String[] columnMapping = {"id", "firstName", "lastName", "country", "age"};
         String csvFileName = "data.csv";
+        String xmlFileName = "data.xml";
         List<Employee> csvList = parseCSV(columnMapping, csvFileName);
         String csvJson = listToJson(csvList);
         writeString(csvJson, "data.json");
-//        List<Employee> xmlList = parseXML("data.xml");
-//        String xmlJson = listToJson(xmlList);
-//        writeString(xmlJson, "data2.json");
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse("data.xml");
-        Node root = doc.getDocumentElement();
-        System.out.println("Корневой элемент: " + root.getNodeName());
-        read(root);
-
-
-    }
-    private static void read(Node node) {
-        NodeList nodeList = node.getChildNodes();
-        for (int i = 0; i < nodeList.getLength(); i++) {
-            Node node_ = nodeList.item(i);
-            if (Node.ELEMENT_NODE == node_.getNodeType()) {
-                System.out.println("Текущий узел: " + node_.getNodeName());
-                Element element = (Element) node_;
-                NamedNodeMap map = element.getAttributes();
-                for (int a = 0; a < map.getLength(); a++) {
-                    String attrName = map.item(a).getNodeName();
-                    String attrValue = map.item(a).getNodeValue();
-                    System.out.println("Атрибут: " + attrName + "; значение: " + attrValue);
-                }
-                read(node_);
-            }
+        List<Employee> xmlList = parseXML(xmlFileName);
+        String xmlJson = listToJson(xmlList);
+        writeString(xmlJson, "data2.json");
+        String json = readString("data.json");
+        List<Employee> jsonList = jsonToList(json);
+        for (Employee employee : jsonList) {
+            System.out.println(employee);
         }
     }
 
     private static List<Employee> parseCSV(String[] columnMapping, String csvFileName) {
-
         List<Employee> staff = new ArrayList<>();
         try (CSVReader reader = new CSVReader(new FileReader(csvFileName))) {
-
             ColumnPositionMappingStrategy<Employee> strategy = new ColumnPositionMappingStrategy<>();
             strategy.setType(Employee.class);
             strategy.setColumnMapping(columnMapping);
-
             CsvToBean<Employee> csv = new CsvToBeanBuilder<Employee>(reader)
                     .withMappingStrategy(strategy)
                     .build();
@@ -80,19 +57,50 @@ public class Main {
     private static List<Employee> parseXML(String xmlFileName) throws ParserConfigurationException, IOException, SAXException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(xmlFileName);
+        Document doc = builder.parse("data.xml");
         List<Employee> staff = new ArrayList<>();
         Node root = doc.getDocumentElement();
         NodeList nodeList = root.getChildNodes();
         for (int i = 0; i < nodeList.getLength(); i++) {
-            Node node_ = nodeList.item(i);
-            if (Node.ELEMENT_NODE == node_.getNodeType()) {
-                Element element = (Element) node_;
-                NamedNodeMap map = element.getAttributes();
-                for (int a = 0; a < map.getLength(); a++) {
-                    staff.add((Employee) map.item(a).getAttributes());
-                }
+            Node node = nodeList.item(i);
+            if (Node.ELEMENT_NODE == node.getNodeType()) {
+                Element element = (Element) node;
+                Employee employee = new Employee(Long.parseLong(element.getElementsByTagName("id").item(0).getTextContent()),
+                        element.getElementsByTagName("firstName").item(0).getTextContent(),
+                        element.getElementsByTagName("lastName").item(0).getTextContent(),
+                        element.getElementsByTagName("country").item(0).getTextContent(),
+                        Integer.parseInt(element.getElementsByTagName("age").item(0).getTextContent()));
+                staff.add(employee);
             }
+        }
+        return staff;
+    }
+
+    private static String readString(String jsonFileName) {
+        String json = null;
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(jsonFileName));
+            json = br.readLine();
+            br.close();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        return json;
+    }
+
+    private static List<Employee> jsonToList(String json) {
+        JSONParser parser = new JSONParser();
+        GsonBuilder builder = new GsonBuilder();
+        Gson gson = builder.create();
+        List<Employee> staff = new ArrayList<>();
+        try {
+            JSONArray jsonArray = (JSONArray) parser.parse(json);
+            for (Object object : jsonArray) {
+                Employee employee = gson.fromJson(object.toString(), Employee.class);
+                staff.add(employee);
+            }
+        } catch (ParseException e) {
+            e.printStackTrace();
         }
         return staff;
     }
@@ -100,10 +108,8 @@ public class Main {
     private static String listToJson(List<Employee> list) {
         GsonBuilder builder = new GsonBuilder();
         Gson gson = builder.create();
-
         Type listType = new TypeToken<List<Employee>>() {
         }.getType();
-
         String json = gson.toJson(list, listType);
         return json;
     }
